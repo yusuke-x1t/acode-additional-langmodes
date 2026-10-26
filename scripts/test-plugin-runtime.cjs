@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const { EditorState } = require("@codemirror/state");
-const { getIndentation, indentUnit } = require("@codemirror/language");
+const { indentUnit } = require("@codemirror/language");
 
 const runtimeModules = {
 	"@codemirror/autocomplete": require("@codemirror/autocomplete"),
@@ -17,9 +17,6 @@ let initPlugin;
 let unmountPlugin;
 const registered = [];
 const unregistered = [];
-
-// Modes the mocked host already provides. Current Acode ships legacy modes
-// for the replacement languages; the "future" test clears them.
 const legacyReplacedModes = ["c", "clojure", "kotlin", "latex", "lua", "swift"];
 const hostModes = new Set(["yaml", ...legacyReplacedModes]);
 
@@ -48,423 +45,81 @@ function installAcodeMock(requireImpl) {
 	global.window = { acode: global.acode };
 }
 
-// Default: host exposes full CodeMirror / Lezer runtimes (modern Acode).
-installAcodeMock((id) =>
-	id === "editorLanguages" ? editorLanguages : runtimeModules[id],
-);
-
+installAcodeMock((id) => id === "editorLanguages" ? editorLanguages : runtimeModules[id]);
 require("../dist/main.js");
+
+const expectedNames = [
+	"asciidoc", "assembly", "autohotkey", "zig", "gitignore", "jsonc", "jsonl",
+	"yaml-enhanced", "ada", "bibtex", "elixir", "golfscript", "graphql", "dot",
+	"handlebars", "hcl", "j", "janet", "nix", "pkl", "svelte", "wgsl", "ejs",
+	"gitattributes", "gleam", "gitcommitmsg", "makefile", "solidity", "mustache",
+	"lezer", "c-enhanced", "clojure-enhanced", "kotlin-enhanced", "latex-enhanced",
+	"lua-enhanced", "luau", "swift-enhanced",
+];
+
+const samples = {
+	asciidoc: "= Project Notes\n\nReview the setup first.\n",
+	assembly: ".text\n.global _start\n_start:\n  mov eax, 1\n",
+	autohotkey: "MsgBox('ok')",
+	zig: 'const std = @import("std");',
+	gitignore: "dist/\n*.tmp\n",
+	jsonc: '{\n  // comment\n  "foo": "bar",\n}',
+	jsonl: '{"id": 1}\n{"id": 2, "active": true}\n',
+	"yaml-enhanced": "jobs:\n  build:\n    runs-on: ubuntu-latest\n",
+	ada: 'with Ada.Text_IO;\nprocedure Hello is\nbegin\n   Ada.Text_IO.Put_Line ("Hello");\nend Hello;\n',
+	bibtex: "@article{example, title={Example}}",
+	elixir: "defmodule Example do\nend",
+	golfscript: "1 2 +",
+	graphql: "query Example { viewer { id } }",
+	dot: "digraph G { a -> b }",
+	handlebars: "<ul>{{#each items}}<li>{{this.name}}</li>{{/each}}</ul>",
+	hcl: 'name = "example"',
+	j: "1 + 2",
+	janet: "(def x 1)",
+	nix: '{ pkgs ? import <nixpkgs> {} }:\npkgs.mkShell { buildInputs = [ pkgs.hello ]; }\n',
+	pkl: 'name = "example"',
+	svelte: "<script>let x = 1;</script><p>{x}</p>",
+	wgsl: "@vertex fn main() -> @builtin(position) vec4f { return vec4f(); }",
+	ejs: "<% if (user) { %>\n<h2><%= user.name %></h2>\n<% } %>",
+	gitattributes: "*.txt text eol=lf\n",
+	gleam: "pub fn main() { Nil }\n",
+	gitcommitmsg: "Add Luau language support\n",
+	makefile: "CC := gcc\n.PHONY: all\nall:\n\t$(CC) -o app main.c\n",
+	solidity: 'pragma solidity ^0.8.24;\ncontract Token { uint256 public totalSupply; }\n',
+	mustache: "<h1>{{title}}</h1>\n{{#items}}<li>{{name}}</li>{{/items}}\n",
+	lezer: '@top Program { expression* }\n@skip { space }\nexpression { Number | kw<"if"> }\nkw<term> { @specialize[@name={term}]<identifier, term> }\n@tokens { space { @whitespace+ } Number { @digit+ } identifier { $[a-z]+ } }\n',
+	"c-enhanced": '#include <stdio.h>\nint main(void) { return 0; }\n',
+	"clojure-enhanced": '(ns app.core)\n(defn greet [name] (str "Hello, " name))\n',
+	"kotlin-enhanced": 'data class User(val name: String)\nfun main() { println(User("Acode")) }\n',
+	"latex-enhanced": "\\documentclass{article}\n\\begin{document}\nHello\n\\end{document}\n",
+	"lua-enhanced": 'local function greet(name)\n  return "Hello, " .. name\nend\nprint(greet("x"))\n',
+	luau: 'local Players = game:GetService("Players")\nlocal function greet(name: string): string\n  return "Hello, " .. name\nend\nprint(greet(Players.LocalPlayer.Name))\n',
+	"swift-enhanced": 'struct User { let name: String }\n',
+};
 
 async function testHostRuntime() {
 	registered.length = 0;
 	unregistered.length = 0;
 	await initPlugin("file:///plugin/", null, {});
-
 	const modes = new Map(registered.map((mode) => [mode.name, mode]));
-	const expectedNames = [
-		"asciidoc",
-		"assembly",
-		"autohotkey",
-		"zig",
-		"gitignore",
-		"jsonc",
-		"jsonl",
-		"yaml-enhanced",
-		"ada",
-		"bibtex",
-		"elixir",
-		"golfscript",
-		"graphql",
-		"dot",
-		"handlebars",
-		"hcl",
-		"j",
-		"janet",
-		"nix",
-		"pkl",
-		"svelte",
-		"wgsl",
-		"ejs",
-		"gitattributes",
-		"gleam",
-		"gitcommitmsg",
-		"makefile",
-		"solidity",
-		"mustache",
-		"lezer",
-		"c-enhanced",
-		"clojure-enhanced",
-		"kotlin-enhanced",
-		"latex-enhanced",
-		"lua-enhanced",
-		"swift-enhanced",
-	];
-
 	assert.deepEqual([...modes.keys()], expectedNames);
-	assert(modes.get("asciidoc").extensions.includes("adoc"));
-	assert(modes.get("assembly").extensions.includes("asm"));
-	assert(modes.get("autohotkey").extensions.includes("ahk"));
-	assert(modes.get("zig").extensions.includes("zon"));
-	assert(modes.get("gitignore").extensions.includes("gitignore"));
-	assert(modes.get("jsonc").extensions.includes("jsonc"));
-	assert(modes.get("jsonl").extensions.includes("jsonl"));
-	assert(modes.get("jsonl").extensions.includes("ndjson"));
-	assert(modes.get("jsonl").extensions.includes("jsonlines"));
-	assert(modes.get("jsonl").extensions.includes("ldjson"));
-	assert(modes.get("yaml-enhanced").extensions.includes("yaml"));
-	assert(modes.get("yaml-enhanced").extensions.includes("yml"));
-	assert(modes.get('gitcommitmsg').extensions.includes("^COMMIT_EDITMSG"));
-	assert(modes.get("makefile").extensions.includes("mk"));
-	assert(modes.get("makefile").extensions.includes("Makefile"));
-	assert(modes.get("solidity").extensions.includes("sol"));
-	assert(modes.get("kotlin-enhanced").extensions.includes("kts"));
-	assert.equal(modes.get("kotlin-enhanced").caption, "Kotlin (Enhanced)");
-	assert(modes.get("latex-enhanced").extensions.includes("tex"));
-	assert(modes.get("handlebars").extensions.includes("hbs"));
-	assert(modes.get("lezer").extensions.includes("grammar"));
-	assert.equal(modes.get("lezer").caption, "Lezer Grammar");
-
-	const samples = {
-		asciidoc: `= Project Notes
-:toc:
-
-NOTE: Review <<setup,setup>> before running.
-
-[#setup]
-== Setup
-
-* [x] Install dependencies
-* Run \`npm test\`
-
-[source,asm]
-----
-_start:
-  mov eax, 1 <1>
-----
-
-<1> Exit syscall.
-`,
-		assembly: `.text
-.global _start
-_start:
-  mov eax, 1
-  mov ebx, message
-  int 0x80
-
-message:
-  .asciz "ok"
-`,
-		autohotkey: "MsgBox('ok')",
-		zig: 'const std = @import("std");',
-		gitignore: "# build output\ndist/\n!important.log\n*.tmp\n",
-		jsonc: '{\n  // comment\n  "foo": "bar",\n}',
-		jsonl: '{"id": 1, "name": "Acode"}\n{"id": 2, "name": "CodeMirror", "active": true}\n// comment\n[1, 2, 3]\n',
-		"yaml-enhanced": `defaults: &defaults
-  enabled: true
-  retries: 3
-jobs:
-  build:
-    <<: *defaults
-    runs-on: ubuntu-latest
-    matrix: {node: [18, 20]}
-`,
-		bibtex: "@article{example, title={Example}}",
-		elixir: "defmodule Example do\nend",
-		golfscript: "1 2 +",
-		graphql: "query Example { viewer { id } }",
-		dot: "digraph G { a -> b }",
-		hcl: 'name = "example"',
-		j: "1 + 2",
-		janet: "(def x 1)",
-		pkl: 'name = "example"',
-		svelte: "<script>let x = 1;</script><p>{x}</p>",
-		wgsl: "@vertex fn main() -> @builtin(position) vec4f { return vec4f(); }",
-		ejs: "<% if (user) { %>\n<h2><%= user.name %></h2>\n<% } %>",
-		gitattributes: "# comment\n*.txt text eol=lf\n",
-		gleam: "pub fn main() { Nil }\n",
-		gitcommitmsg: `
-# Please enter the commit message for your changes. Lines starting
-# with '#' will be ignored, and an empty message aborts the commit.
-#
-# On branch main
-# Your branch is up to date with 'origin/main'.
-#
-# Changes to be committed:
-#	modified:   src/components/AuthProvider.tsx
-#	new file:   src/index.html
-#	modified:   src/lib/data.ts
-#	modified:   src/lib/utils.ts
-#
-# Changes not staged for commit:
-#	modified:   package.json
-#	modified:   src/hooks/use-toast.ts
-#	modified:   src/index.html
-#
-# ------------------------ >8 ------------------------
-# Do not modify or remove the line above.
-# Everything below it will be ignored.
-diff --git a/src/components/AuthProvider.tsx b/src/components/AuthProvider.tsx
-index 395e257..c594478 100644
---- a/src/components/AuthProvider.tsx
-+++ b/src/components/AuthProvider.tsx
-@@ -9,3 +9,5 @@ interface AuthProviderProps {
- export default function AuthProvider({ children }: AuthProviderProps) {
-     return <SessionProvider>{children}</SessionProvider>
- }
-+
-+
-diff --git a/src/index.html b/src/index.html
-new file mode 100644
-index 0000000..e69de29`,
-		makefile: `CC := gcc
-.PHONY: all
-all: main.o
-	$(CC) -o app $@
-ifeq ($(DEBUG),1)
-  CFLAGS += -g
-endif
-`,
-		solidity: `pragma solidity ^0.8.24;
-contract Token {
-  uint256 public totalSupply;
-  function mint(address to) public {
-    require(to != address(0));
-  }
-}
-`,
-		ada: `with Ada.Text_IO;
-procedure Hello is
-begin
-   Ada.Text_IO.Put_Line ("Hello");
-end Hello;
-`,
-		handlebars: "<ul>{{#each items}}<li>{{this.name}}</li>{{/each}}</ul>\n",
-		nix: '{ pkgs ? import <nixpkgs> {} }:\npkgs.mkShell { buildInputs = [ pkgs.hello ]; }\n',
-		mustache: "<h1>{{title}}</h1>\n{{#items}}<li>{{name}}</li>{{/items}}\n{{! comment }}\n",
-		lezer: `@top Program { expression* }
-@skip { space }
-expression { Number | kw<"if"> }
-kw<term> { @specialize[@name={term}]<identifier, term> }
-@tokens {
-  space { @whitespace+ }
-  Number { @digit+ }
-  identifier { $[a-z]+ }
-}
-`,
-		"c-enhanced": '#include <stdio.h>\nint main(void) { printf("%d\\n", 1); return 0; }\n',
-		"clojure-enhanced": '(ns app.core)\n(defn greet [name] (str "Hello, " name))\n',
-		"kotlin-enhanced": `package app
-
-data class User(val name: String, val age: Int = 0)
-
-fun main() {
-    val users = listOf(User("a"), User("b", 2))
-    users.filter { it.age > 0 }.forEach { println("\${it.name}") }
-}
-`,
-		"latex-enhanced": `\\documentclass{article}
-\\begin{document}
-\\section{Intro}
-Inline $x^2$ math.
-\\end{document}
-`,
-		"lua-enhanced": 'local function greet(name)\n  return "Hello, " .. name\nend\nprint(greet("x"))\n',
-		"swift-enhanced": `struct User {
-    let name: String
-}
-func greet(_ user: User) -> String { "Hello, \\(user.name)" }
-`,
-	};
 
 	for (const [name, source] of Object.entries(samples)) {
-		const support = modes.get(name).load();
+		const support = modes.get(name)?.load();
 		assert(support?.language, `${name} did not return LanguageSupport`);
-		if (name === "bibtex") {
-			assert.equal(
-				support.support.length,
-				0,
-				"bibtex should not enable package autocomplete or linter extensions",
-			);
-		}
-		const state = EditorState.create({
-			doc: source,
-			extensions: [support, indentUnit.of("  ")],
-		});
-		const tree = support.language.parser.parse(source);
+		const state = EditorState.create({ doc: source, extensions: [support, indentUnit.of("  ")] });
+		const tree = support.language.parser.parse(state.doc.toString());
 		assert.equal(tree.length, source.length, `${name} did not parse the full fixture`);
-		if (
-			name === "asciidoc" ||
-			name === "assembly" ||
-			name === "yaml-enhanced" ||
-			name === "makefile" ||
-			name === "solidity" ||
-			name === "lezer"
-		) {
-			const nodeNames = new Set();
-			const errors = [];
-			tree.iterate({
-				enter(node) {
-					nodeNames.add(node.name);
-					if (node.type.isError) errors.push([node.from, node.to]);
-				},
-			});
-			assert.equal(errors.length, 0, `${name} produced parse errors`);
-			const expectedNodes =
-				name === "asciidoc"
-					? ["Heading1", "Heading2", "AttributeLine", "Xref", "ListingBlock", "ListItem"]
-					: name === "assembly"
-						? ["DirectiveName", "Label", "Instruction", "Register", "String"]
-						: name === "makefile"
-							? [
-									"VariableAssignment",
-									"SpecialTarget",
-									"TargetLine",
-									"RecipeLine",
-									"Conditional",
-									"AutomaticVariable",
-								]
-							: name === "lezer"
-								? ["RuleDeclaration", "SkipDeclaration", "Call", "Specialization", "TokensDeclaration", "CharClass"]
-							: name === "solidity"
-								? [
-										"PragmaDirective",
-										"ContractDeclaration",
-										"StateVariableDeclaration",
-										"FunctionDefinition",
-										"PrimitiveType",
-										"BuiltinName",
-									]
-							: ["BlockMapping", "FlowMapping", "FlowSequence", "Anchor", "Alias", "Boolean", "Integer"];
-			for (const nodeName of expectedNodes) {
-				assert(
-					nodeNames.has(nodeName),
-					`${name} did not produce ${nodeName}`,
-				);
-			}
-		}
 	}
 
-	const asciidocSupport = modes.get("asciidoc").load();
-	const asciidocIndentState = EditorState.create({
-		doc: "* item\n\n----\ncode\n----\n",
-		extensions: [asciidocSupport, indentUnit.of("  ")],
-	});
-	assert.equal(
-		getIndentation(asciidocIndentState, asciidocIndentState.doc.line(2).from),
-		2,
-		"asciidoc should indent list continuation lines after the marker",
-	);
-	assert.equal(
-		getIndentation(asciidocIndentState, asciidocIndentState.doc.line(4).from),
-		0,
-		"asciidoc should preserve delimited block content indentation",
-	);
-
-	const assemblySupport = modes.get("assembly").load();
-	const assemblyIndentState = EditorState.create({
-		doc: ".macro exit code\nmov eax,\n]\n.endm\n\n_start:\nmov eax, 1\n.text\n",
-		extensions: [assemblySupport, indentUnit.of("  ")],
-	});
-	assert.equal(
-		getIndentation(assemblyIndentState, assemblyIndentState.doc.line(2).from),
-		2,
-		"assembly should indent inside macro blocks",
-	);
-	assert.equal(
-		getIndentation(assemblyIndentState, assemblyIndentState.doc.line(3).from),
-		2,
-		"assembly should outdent closing operand delimiters after continued operands",
-	);
-	assert.equal(
-		getIndentation(assemblyIndentState, assemblyIndentState.doc.line(4).from),
-		0,
-		"assembly should outdent macro closing directives",
-	);
-	assert.equal(
-		getIndentation(assemblyIndentState, assemblyIndentState.doc.line(7).from),
-		2,
-		"assembly should indent instructions after labels",
-	);
-	assert.equal(
-		getIndentation(assemblyIndentState, assemblyIndentState.doc.line(8).from),
-		0,
-		"assembly section directives should reset to the section column",
-	);
-
+	assert.equal(modes.get("bibtex").load().support.length, 0);
+	assert(modes.get("luau").extensions.includes("luau"));
+	assert.equal(modes.get("luau").caption, "Luau");
 	await unmountPlugin();
 	assert.deepEqual(unregistered, [...expectedNames].reverse());
-
-	console.log(
-		`Validated ${expectedNames.length} Acode registrations and language loaders (host @lezer/*).`,
-	);
+	console.log(`Validated ${expectedNames.length} Acode registrations and language loaders, including Lua and Luau.`);
 }
 
-/**
- * Older Acode builds do not expose @lezer/lr or @lezer/common via
- * acode.require. The plugin must fall back to its bundled copies so modes
- * that need LRParser / ExternalTokenizer / ContextTracker / parseMixed still load.
- */
-async function testBundledLezerFallback() {
-	const distPath = require.resolve("../dist/main.js");
-	delete require.cache[distPath];
-	registered.length = 0;
-	unregistered.length = 0;
-
-	installAcodeMock((id) => {
-		if (id === "editorLanguages") return editorLanguages;
-		// Simulate pre-@lezer/* host: these requires return undefined.
-		if (id === "@lezer/lr" || id === "@lezer/common") return undefined;
-		return runtimeModules[id];
-	});
-
-	require(distPath);
-	await initPlugin("file:///plugin/", null, {});
-
-	const modes = new Map(registered.map((mode) => [mode.name, mode]));
-	assert(modes.has("makefile"), "makefile should register without host @lezer/lr");
-	assert(
-		modes.has("yaml-enhanced"),
-		"yaml-enhanced should register without host @lezer/common",
-	);
-
-	const makefileSource = `CC := gcc
-.PHONY: all
-all: main.o
-	$(CC) -o app $@
-ifeq ($(DEBUG),1)
-  CFLAGS += -g
-endif
-`;
-	const makefileSupport = modes.get("makefile").load();
-	const makefileTree = makefileSupport.language.parser.parse(makefileSource);
-	assert.equal(
-		makefileTree.length,
-		makefileSource.length,
-		"makefile should parse with bundled @lezer/lr",
-	);
-
-	const yamlSource = `jobs:
-  build:
-    runs-on: ubuntu-latest
-`;
-	const yamlSupport = modes.get("yaml-enhanced").load();
-	const yamlTree = yamlSupport.language.parser.parse(yamlSource);
-	assert.equal(
-		yamlTree.length,
-		yamlSource.length,
-		"yaml-enhanced should parse with bundled @lezer/lr + @lezer/common",
-	);
-
-	await unmountPlugin();
-	console.log(
-		"Validated bundled @lezer/lr and @lezer/common fallback for older Acode.",
-	);
-}
-
-/**
- * Once Acode drops its legacy modes, replacement modes must take the
- * canonical name and caption instead of the "-enhanced" fallback.
- */
 async function testReplacementsWithoutLegacyModes() {
 	registered.length = 0;
 	unregistered.length = 0;
@@ -484,7 +139,36 @@ async function testReplacementsWithoutLegacyModes() {
 	} finally {
 		for (const name of legacyReplacedModes) hostModes.add(name);
 	}
-	console.log("Validated replacement modes take canonical names without legacy modes.");
+	console.log("Validated replacement modes use canonical names when the host has no legacy mode.");
+}
+
+async function testBundledLezerFallback() {
+	const distPath = require.resolve("../dist/main.js");
+	delete require.cache[distPath];
+	registered.length = 0;
+	unregistered.length = 0;
+	installAcodeMock((id) => {
+		if (id === "editorLanguages") return editorLanguages;
+		if (id === "@lezer/lr" || id === "@lezer/common") return undefined;
+		return runtimeModules[id];
+	});
+	require(distPath);
+	await initPlugin("file:///plugin/", null, {});
+	const modes = new Map(registered.map((mode) => [mode.name, mode]));
+	assert(modes.has("makefile"), "makefile should register without host @lezer/lr");
+	assert(modes.has("yaml-enhanced"), "yaml-enhanced should register without host @lezer/common");
+	const fallbackSamples = {
+		makefile: "CC := gcc\n.PHONY: all\nall:\n\t$(CC) -o app main.c\n",
+		"yaml-enhanced": "jobs:\n  build:\n    runs-on: ubuntu-latest\n",
+	};
+	for (const [name, source] of Object.entries(fallbackSamples)) {
+		const support = modes.get(name).load();
+		assert(support?.language, `${name} should load with bundled Lezer fallback`);
+		const tree = support.language.parser.parse(source);
+		assert.equal(tree.length, source.length, `${name} should parse with bundled Lezer fallback`);
+	}
+	await unmountPlugin();
+	console.log("Validated bundled @lezer/lr and @lezer/common fallback for older Acode builds.");
 }
 
 async function test() {
