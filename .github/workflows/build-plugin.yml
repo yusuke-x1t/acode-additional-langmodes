@@ -26,7 +26,7 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Synchronize package lock metadata
+      - name: Synchronize npm lockfile
         run: node scripts/sync-package-lock.mjs
 
       - name: Install dependencies
