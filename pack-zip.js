@@ -1,69 +1,48 @@
-const path = require('path');
-const fs = require('fs');
-const jszip = require('jszip');
+const fs = require("node:fs");
+const path = require("node:path");
+const JSZip = require("jszip");
 
-const iconFile = path.join(__dirname, 'icon.png');
-const pluginJSON = path.join(__dirname, 'plugin.json');
-const distFolder = path.join(__dirname, 'dist');
-const json = JSON.parse(fs.readFileSync(pluginJSON, 'utf8'));
-let readmeDotMd;
-let changelogDotMd;
+const root = __dirname;
+const dist = path.join(root, "dist");
+const output = path.join(root, "acode.additional.langmodes.modified.zip");
+const manifest = JSON.parse(fs.readFileSync(path.join(root, "plugin.json"), "utf8"));
+const zip = new JSZip();
 
-if (!json.readme) {
-  readmeDotMd = path.join(__dirname, 'readme.md');
-  if (!fs.existsSync(readmeDotMd)) {
-    readmeDotMd = path.join(__dirname, 'README.md');
-  }
+if (manifest.id !== "acode.additional.langmodes.modified") throw new Error("Unexpected plugin id");
+if (!fs.existsSync(dist)) throw new Error("dist directory does not exist; run the build first");
+
+for (const file of ["plugin.json", "icon.png"]) {
+	const filePath = path.join(root, file);
+	if (!fs.existsSync(filePath)) throw new Error(`Missing required plugin file: ${file}`);
+	zip.file(file, fs.readFileSync(filePath));
 }
 
-
-if (!json.changelogs) {
-  if (!fs.existsSync(changelogDotMd)) {
-    changelogDotMd = path.join(__dirname, 'CHANGELOG.md');
-  }
-
-  if (!fs.existsSync(changelogDotMd)) {
-    changelogDotMd = path.join(__dirname, 'changelog.md');
-  }
+for (const file of ["readme.md", "README.md", "changelog.md", "CHANGELOG.md"]) {
+	const filePath = path.join(root, file);
+	if (fs.existsSync(filePath)) {
+		const archiveName = file.toLowerCase() === "readme.md" || file.toLowerCase() === "changelog.md" ? file.toLowerCase() : file;
+		if (!zip.files[archiveName]) zip.file(archiveName, fs.readFileSync(filePath));
+	}
 }
 
-// create zip file of dist folder
-
-const zip = new jszip();
-
-zip.file('icon.png', fs.readFileSync(iconFile));
-zip.file('plugin.json', fs.readFileSync(pluginJSON));
-
-if (readmeDotMd) {
-  zip.file("readme.md", fs.readFileSync(readmeDotMd));
-}
-if (changelogDotMd) {
-  zip.file("changelog.md", fs.readFileSync(changelogDotMd));
+function addDirectory(directory, relative = "") {
+	for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+		const source = path.join(directory, entry.name);
+		const archivePath = path.posix.join(relative, entry.name);
+		if (entry.isDirectory()) {
+			addDirectory(source, archivePath);
+		} else if (entry.isFile() && !/LICENSE\.txt$/.test(entry.name)) {
+			zip.file(archivePath, fs.readFileSync(source));
+		}
+	}
 }
 
-loadFile('', distFolder);
+addDirectory(dist);
 
-zip
-  .generateNodeStream({ type: 'nodebuffer', streamFiles: true })
-  .pipe(fs.createWriteStream(path.join(__dirname, 'plugin.zip')))
-  .on('finish', () => {
-    console.log('Plugin plugin.zip written.');
-  });
-
-function loadFile(root, folder) {
-  const distFiles = fs.readdirSync(folder);
-  distFiles.forEach((file) => {
-
-    const stat = fs.statSync(path.join(folder, file));
-
-    if (stat.isDirectory()) {
-      zip.folder(file);
-      loadFile(path.join(root, file), path.join(folder, file));
-      return;
-    }
-
-    if (!/LICENSE.txt/.test(file)) {
-      zip.file(path.join(root, file), fs.readFileSync(path.join(folder, file)));
-    }
-  });
-}
+zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE", compressionOptions: { level: 9 } })
+	.then((buffer) => fs.promises.writeFile(output, buffer))
+	.then(() => console.log(`Created ${path.basename(output)}`))
+	.catch((error) => {
+		console.error(error);
+		process.exitCode = 1;
+	});
