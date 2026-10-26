@@ -123,6 +123,10 @@ async function testHostRuntime() {
 	assert.equal(modes.get("bibtex").load().support.length, 0);
 	assert(modes.get("luau").extensions.includes("luau"));
 	assert.equal(modes.get("luau").caption, "Luau");
+	for (const name of directReplacementModes) {
+		assert(unregistered.includes(name), `${name} original mode was not removed before replacement`);
+	}
+	unregistered.length = 0;
 	await unmountPlugin();
 	assert.deepEqual(unregistered, [...expectedNames].reverse());
 	for (const name of directReplacementModes) {
