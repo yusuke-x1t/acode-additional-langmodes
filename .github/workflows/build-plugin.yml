@@ -1,0 +1,83 @@
+name: Build Modified Plugin
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Synchronize package lock metadata
+        run: node scripts/sync-package-lock.mjs
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test and build plugin
+        run: npm run check
+
+      - name: Validate installable plugin ZIP
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const JSZip = require('jszip');
+          (async () => {
+            const filename = 'acode.additional.langmodes.modified.zip';
+            if (!fs.existsSync(filename)) throw new Error(`Missing ${filename}`);
+            const archive = await JSZip.loadAsync(fs.readFileSync(filename));
+            for (const name of ['plugin.json', 'main.js', 'icon.png']) {
+              if (!archive.files[name]) throw new Error(`Missing ${name} at ZIP root`);
+            }
+            const manifest = JSON.parse(await archive.file('plugin.json').async('string'));
+            if (manifest.id !== 'acode.additional.langmodes.modified') throw new Error('Plugin ID does not match');
+            if (manifest.name !== 'Additional Language Modes (Modified)') throw new Error('Plugin name does not match');
+            console.log(`Validated ${filename}: ${manifest.id}`);
+          })().catch((error) => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+          NODE
+
+      - name: Prepare directly installable artifact
+        run: |
+          mkdir -p artifact
+          unzip -q acode.additional.langmodes.modified.zip -d artifact
+          test -f artifact/plugin.json
+          test -f artifact/main.js
+
+      - name: Upload downloadable plugin ZIP
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: acode.additional.langmodes.modified.zip
+          path: artifact/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Show download link
+        env:
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+        run: |
+          echo '## Download' >> "$GITHUB_STEP_SUMMARY"
+          echo '[Download acode.additional.langmodes.modified.zip]('"$ARTIFACT_URL"')' >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo 'The downloaded artifact contains plugin.json and main.js at its root and can be installed directly.' >> "$GITHUB_STEP_SUMMARY"
