@@ -45,7 +45,7 @@ export const enhancedLanguageModes = [
 	{
 		name: "luau",
 		caption: "Luau",
-		replaces: true,
+		forceReplace: true,
 		extensions: ["luau"],
 		load: luau,
 	},
