@@ -1,10 +1,10 @@
 {
-  "name": "acode-additional-langmodes",
-  "version": "1.2.1",
-  "description": "Additional CodeMirror language modes for Acode",
+  "name": "acode-additional-langmodes-modified",
+  "version": "1.2.2",
+  "description": "Additional Language Modes (Modified) for Acode",
   "main": "src/main.js",
-  "repository": "",
-  "author": "",
+  "repository": "https://github.com/yusuke-x1t/acode-additional-langmodes",
+  "author": "Yusuke-x1t",
   "license": "MIT",
   "dependencies": {
     "@citedrive/codemirror-lang-bibtex": "^6.4.1",
@@ -30,7 +30,7 @@
     "acode-plugin-types": "^1.11.7-patch.2",
     "cm6-graphql": "^0.2.1",
     "codemirror-lang-ada": "^0.1.1",
-    "codemirror-lang-elixir": "^4.0.1",
+    "codemirror-lang-elixir": "^4.0.0",
     "codemirror-lang-golfscript": "^0.1.0",
     "codemirror-lang-hcl": "^0.1.0",
     "codemirror-lang-j": "^0.1.1",
@@ -48,8 +48,11 @@
   "scripts": {
     "dev": "node esbuild.config.mjs --serve",
     "generate": "node scripts/generate-parsers.mjs",
+    "prebuild": "node scripts/sync-lua-modes.mjs",
     "build": "npm run generate && node esbuild.config.mjs",
+    "pretest": "node scripts/sync-lua-modes.mjs",
     "test": "npm run generate && node scripts/test-parser.mjs",
+    "precheck": "node scripts/sync-lua-modes.mjs",
     "check": "npm run generate && tsc --noEmit && node scripts/test-parser.mjs && npm run build && node scripts/test-plugin-runtime.cjs"
   },
   "browserslist": "cover 100%,not android < 5"
