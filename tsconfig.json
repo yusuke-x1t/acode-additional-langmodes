@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "target": "es2016",
+    "lib": ["ES2019", "DOM", "DOM.Iterable"],
     "module": "commonjs",
     "allowJs": true,
     "esModuleInterop": true,
@@ -8,7 +9,7 @@
     "strict": true,
     "skipLibCheck": true,
     "outDir": "dist",
-    "types": ["acode-plugin-types"],
+    "types": ["acode-plugin-types"]
   },
-  "exclude": ["./dist/**/*", "./postcss.config.js"],
+  "exclude": ["./dist/**/*", "./postcss.config.js"]
 }
