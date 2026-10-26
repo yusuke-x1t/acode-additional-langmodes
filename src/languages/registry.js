@@ -8,12 +8,44 @@ export class LanguageModeRegistry {
 	constructor(editorLanguages) {
 		this.editorLanguages = editorLanguages;
 		this.registeredNames = [];
+		this.replacedModes = new Map();
 	}
 
 	registerAll(modes) {
 		for (const mode of modes) {
 			this.register(mode);
 		}
+	}
+
+	captureMode(mode) {
+		const extensions = mode?.extensions;
+		const caption = mode?.caption;
+		let load = null;
+
+		if (typeof mode?.getExtension === "function") {
+			load = mode.getExtension();
+		} else if (typeof mode?.load === "function") {
+			load = mode.load;
+		} else if (typeof mode?.languageExtension === "function") {
+			load = mode.languageExtension;
+		}
+
+		if (extensions == null || typeof load !== "function") {
+			throw new TypeError("Cannot safely replace the existing language mode.");
+		}
+
+		return { extensions, caption: caption || mode.name, load };
+	}
+
+	restoreMode(name) {
+		const previous = this.replacedModes.get(name);
+		if (!previous) return;
+
+		if (!this.editorLanguages.get?.(name)) {
+			this.editorLanguages.register(name, previous.extensions, previous.caption, previous.load);
+		}
+
+		this.replacedModes.delete(name);
 	}
 
 	register(mode) {
@@ -23,30 +55,46 @@ export class LanguageModeRegistry {
 		}
 
 		let caption = mode.caption || name;
-		// Replacement modes coexist with an existing Acode mode of the same
-		// name under an "-enhanced" name, and take the canonical name once
-		// Acode no longer ships its own.
-		if (mode.replaces && this.editorLanguages.get?.(name)) {
+		const existing = this.editorLanguages.get?.(name);
+
+		if (mode.forceReplace && existing) {
+			if (this.replacedModes.has(name)) {
+				throw new Error(`Language mode '${name}' is already being replaced.`);
+			}
+
+			const previous = this.captureMode(existing);
+			this.editorLanguages.unregister(name);
+			this.replacedModes.set(name, previous);
+		} else if (mode.replaces && existing) {
 			name = `${name}-enhanced`;
 			caption = `${caption} (Enhanced)`;
 		}
 
-		// Do not shadow a language that a future Acode release may bundle.
 		if (this.editorLanguages.get?.(name)) {
 			console.info(`[${name}] Language support is already available.`);
+			this.restoreMode(name);
 			return false;
 		}
 
 		const extensions = [...new Set(mode.extensions || [])];
-		this.editorLanguages.register(name, extensions, caption, mode.load);
-		this.registeredNames.push(name);
-		return true;
+		try {
+			this.editorLanguages.register(name, extensions, caption, mode.load);
+			this.registeredNames.push(name);
+			return true;
+		} catch (error) {
+			this.restoreMode(name);
+			throw error;
+		}
 	}
 
 	unregisterAll() {
-		for (const name of this.registeredNames.reverse()) {
+		for (const name of [...this.registeredNames].reverse()) {
 			this.editorLanguages.unregister(name);
 		}
 		this.registeredNames = [];
+
+		for (const name of [...this.replacedModes.keys()].reverse()) {
+			this.restoreMode(name);
+		}
 	}
 }
