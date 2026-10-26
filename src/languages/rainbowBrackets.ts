@@ -119,6 +119,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 		}
 
 		const char = source[pos];
+
 		if (OPENING.has(char)) {
 			const token: BracketToken = {
 				char,
@@ -192,7 +193,15 @@ export function rainbowBrackets() {
 
 				update(update: ViewUpdate) {
 					this.view = update.view;
-					if (update.docChanged || update.viewportChanged) this.scheduleBuild(update.view);
+
+					const treeChanged =
+						syntaxTree(update.startState) !== syntaxTree(update.state);
+
+					if (!update.docChanged && !update.viewportChanged && !treeChanged) {
+						return;
+					}
+
+					this.scheduleBuild(update.view);
 				}
 
 				scheduleBuild(view: EditorView) {
@@ -204,6 +213,7 @@ export function rainbowBrackets() {
 						const pendingView = this.pendingView;
 						this.pendingView = null;
 						if (!pendingView || this.destroyed) return;
+
 						this.decorations = buildDecorations(pendingView);
 						pendingView.update([]);
 					});
