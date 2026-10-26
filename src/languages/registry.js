@@ -55,9 +55,16 @@ export class LanguageModeRegistry {
 		}
 
 		let caption = mode.caption || name;
-		const existing = this.editorLanguages.get?.(name);
+		const hasEnhancedSuffix = name.endsWith("-enhanced");
+		if (hasEnhancedSuffix) {
+			name = name.slice(0, -"-enhanced".length);
+			caption = caption.replace(/\s*\(Enhanced\)\s*$/i, "").trim() || name;
+		}
 
-		if (mode.forceReplace && existing) {
+		const existing = this.editorLanguages.get?.(name);
+		const shouldReplace = !!(mode.forceReplace || mode.replaces || hasEnhancedSuffix);
+
+		if (shouldReplace && existing) {
 			if (this.replacedModes.has(name)) {
 				throw new Error(`Language mode '${name}' is already being replaced.`);
 			}
@@ -65,9 +72,6 @@ export class LanguageModeRegistry {
 			const previous = this.captureMode(existing);
 			this.editorLanguages.unregister(name);
 			this.replacedModes.set(name, previous);
-		} else if (mode.replaces && existing) {
-			name = `${name}-enhanced`;
-			caption = `${caption} (Enhanced)`;
 		}
 
 		if (this.editorLanguages.get?.(name)) {
