@@ -1,10 +1,14 @@
-import fs from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 
-const packageJson = JSON.parse(await fs.readFile("package.json", "utf8"));
-const lockPath = "package-lock.json";
-const lock = JSON.parse(await fs.readFile(lockPath, "utf8"));
-lock.name = packageJson.name;
-lock.version = packageJson.version;
-lock.packages[""].name = packageJson.name;
-lock.packages[""].version = packageJson.version;
-await fs.writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+const command = process.platform === "win32" ? "npm.cmd" : "npm";
+const result = spawnSync(command, ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"], {
+  stdio: "inherit",
+  shell: process.platform === "win32",
+});
+
+if (result.error) {
+  console.error(result.error);
+  process.exit(1);
+}
+
+if (result.status !== 0) process.exit(result.status ?? 1);
