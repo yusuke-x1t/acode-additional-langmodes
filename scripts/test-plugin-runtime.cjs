@@ -17,17 +17,26 @@ let initPlugin;
 let unmountPlugin;
 const registered = [];
 const unregistered = [];
-const legacyReplacedModes = ["c", "clojure", "kotlin", "latex", "lua", "swift"];
-const hostModes = new Set(["yaml", ...legacyReplacedModes]);
+const directReplacementModes = ["yaml", "c", "clojure", "kotlin", "latex", "lua", "luau", "swift"];
+const originalModes = new Map(directReplacementModes.map((name) => [name, {
+	name,
+	extensions: [name],
+	caption: name,
+	load: () => ({ language: { parser: { parse(source) { return { length: source.length }; } } } }),
+}]));
+const activeModes = new Map(originalModes);
 
 const editorLanguages = {
 	get(name) {
-		return hostModes.has(name) ? { name } : null;
+		return activeModes.get(name) || null;
 	},
 	register(name, extensions, caption, load) {
-		registered.push({ name, extensions, caption, load });
+		const mode = { name, extensions, caption, load };
+		activeModes.set(name, mode);
+		registered.push(mode);
 	},
 	unregister(name) {
+		activeModes.delete(name);
 		unregistered.push(name);
 	},
 };
@@ -50,11 +59,10 @@ require("../dist/main.js");
 
 const expectedNames = [
 	"asciidoc", "assembly", "autohotkey", "zig", "gitignore", "jsonc", "jsonl",
-	"yaml-enhanced", "ada", "bibtex", "elixir", "golfscript", "graphql", "dot",
+	"yaml", "ada", "bibtex", "elixir", "golfscript", "graphql", "dot",
 	"handlebars", "hcl", "j", "janet", "nix", "pkl", "svelte", "wgsl", "ejs",
 	"gitattributes", "gleam", "gitcommitmsg", "makefile", "solidity", "mustache",
-	"lezer", "c-enhanced", "clojure-enhanced", "kotlin-enhanced", "latex-enhanced",
-	"lua-enhanced", "luau", "swift-enhanced",
+	"lezer", "c", "clojure", "kotlin", "latex", "lua", "luau", "swift",
 ];
 
 const samples = {
@@ -65,7 +73,7 @@ const samples = {
 	gitignore: "dist/\n*.tmp\n",
 	jsonc: '{\n  // comment\n  "foo": "bar",\n}',
 	jsonl: '{"id": 1}\n{"id": 2, "active": true}\n',
-	"yaml-enhanced": "jobs:\n  build:\n    runs-on: ubuntu-latest\n",
+	yaml: "jobs:\n  build:\n    runs-on: ubuntu-latest\n",
 	ada: 'with Ada.Text_IO;\nprocedure Hello is\nbegin\n   Ada.Text_IO.Put_Line ("Hello");\nend Hello;\n',
 	bibtex: "@article{example, title={Example}}",
 	elixir: "defmodule Example do\nend",
@@ -88,13 +96,13 @@ const samples = {
 	solidity: 'pragma solidity ^0.8.24;\ncontract Token { uint256 public totalSupply; }\n',
 	mustache: "<h1>{{title}}</h1>\n{{#items}}<li>{{name}}</li>{{/items}}\n",
 	lezer: '@top Program { expression* }\n@skip { space }\nexpression { Number | kw<"if"> }\nkw<term> { @specialize[@name={term}]<identifier, term> }\n@tokens { space { @whitespace+ } Number { @digit+ } identifier { $[a-z]+ } }\n',
-	"c-enhanced": '#include <stdio.h>\nint main(void) { return 0; }\n',
-	"clojure-enhanced": '(ns app.core)\n(defn greet [name] (str "Hello, " name))\n',
-	"kotlin-enhanced": 'data class User(val name: String)\nfun main() { println(User("Acode")) }\n',
-	"latex-enhanced": "\\documentclass{article}\n\\begin{document}\nHello\n\\end{document}\n",
-	"lua-enhanced": 'local function greet(name)\n  return "Hello, " .. name\nend\nprint(greet("x"))\n',
+	c: '#include <stdio.h>\nint main(void) { return 0; }\n',
+	clojure: '(ns app.core)\n(defn greet [name] (str "Hello, " name))\n',
+	kotlin: 'data class User(val name: String)\nfun main() { println(User("Acode")) }\n',
+	latex: "\\documentclass{article}\n\\begin{document}\nHello\n\\end{document}\n",
+	lua: 'local function greet(name)\n  return "Hello, " .. name\nend\nprint(greet("x"))\n',
 	luau: 'local Players = game:GetService("Players")\nlocal function greet(name: string): string\n  return "Hello, " .. name\nend\nprint(greet(Players.LocalPlayer.Name))\n',
-	"swift-enhanced": 'struct User { let name: String }\n',
+	swift: 'struct User { let name: String }\n',
 };
 
 async function testHostRuntime() {
@@ -117,27 +125,37 @@ async function testHostRuntime() {
 	assert.equal(modes.get("luau").caption, "Luau");
 	await unmountPlugin();
 	assert.deepEqual(unregistered, [...expectedNames].reverse());
-	console.log(`Validated ${expectedNames.length} Acode registrations and language loaders, including Lua and Luau.`);
+	for (const name of directReplacementModes) {
+		const restored = editorLanguages.get(name);
+		const original = originalModes.get(name);
+		assert(restored, `${name} original mode was not restored`);
+		assert.deepEqual(restored.extensions, original.extensions, `${name} extensions were not restored`);
+		assert.equal(restored.caption, original.caption, `${name} caption was not restored`);
+		assert.equal(restored.load, original.load, `${name} loader was not restored`);
+	}
+	console.log(`Validated ${expectedNames.length} registrations and restoration of all directly replaced modes.`);
 }
 
 async function testReplacementsWithoutLegacyModes() {
 	registered.length = 0;
 	unregistered.length = 0;
-	for (const name of legacyReplacedModes) hostModes.delete(name);
+	for (const name of directReplacementModes) activeModes.delete(name);
 	try {
 		await initPlugin("file:///plugin/", null, {});
 		const modes = new Map(registered.map((mode) => [mode.name, mode]));
-		for (const name of legacyReplacedModes) {
+		for (const name of directReplacementModes) {
 			assert(modes.has(name), `${name} should register under its canonical name`);
 			assert(!modes.has(`${name}-enhanced`), `${name}-enhanced should not register`);
 			assert(!modes.get(name).caption.includes("Enhanced"));
 			assert(modes.get(name).load()?.language, `${name} did not return LanguageSupport`);
 		}
 		assert.equal(modes.get("kotlin").caption, "Kotlin");
+		assert.equal(modes.get("luau").caption, "Luau");
 		await unmountPlugin();
 		assert(unregistered.includes("kotlin"));
+		assert(unregistered.includes("luau"));
 	} finally {
-		for (const name of legacyReplacedModes) hostModes.add(name);
+		for (const name of directReplacementModes) activeModes.set(name, originalModes.get(name));
 	}
 	console.log("Validated replacement modes use canonical names when the host has no legacy mode.");
 }
@@ -156,10 +174,10 @@ async function testBundledLezerFallback() {
 	await initPlugin("file:///plugin/", null, {});
 	const modes = new Map(registered.map((mode) => [mode.name, mode]));
 	assert(modes.has("makefile"), "makefile should register without host @lezer/lr");
-	assert(modes.has("yaml-enhanced"), "yaml-enhanced should register without host @lezer/common");
+	assert(modes.has("yaml"), "yaml should register without host @lezer/common");
 	const fallbackSamples = {
 		makefile: "CC := gcc\n.PHONY: all\nall:\n\t$(CC) -o app main.c\n",
-		"yaml-enhanced": "jobs:\n  build:\n    runs-on: ubuntu-latest\n",
+		yaml: "jobs:\n  build:\n    runs-on: ubuntu-latest\n",
 	};
 	for (const [name, source] of Object.entries(fallbackSamples)) {
 		const support = modes.get(name).load();
